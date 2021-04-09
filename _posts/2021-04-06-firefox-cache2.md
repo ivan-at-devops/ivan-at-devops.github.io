@@ -1,4 +1,3 @@
-
 ---
 title: "Mozilla Firefox cache2"
 ---
