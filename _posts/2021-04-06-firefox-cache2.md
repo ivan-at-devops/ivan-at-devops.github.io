@@ -1,5 +1,6 @@
 ---
 title: "Mozilla Firefox cache2"
+tags: Firefox Bash sh
 ---
 
 Personal project about hoarding images while browsing the internets. 

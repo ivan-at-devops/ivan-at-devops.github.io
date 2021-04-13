@@ -1,5 +1,6 @@
 ---
 title: "Moodle in Docker"
+tags: Docker Moodle php.ini docker-compose
 ---
 
 This is an example of how can a DevOps spend a day playing with his/her toys.
