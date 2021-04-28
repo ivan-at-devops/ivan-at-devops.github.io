@@ -113,18 +113,19 @@ Also, it can be improved with some small changes:
   This fix is only for Docker, so we'll make it outside the script, in the `Dockerfile`.
 - There is no need to upgrade all installed packages. You should not do this without asking or warning the system owner.
 - BackupPC once installed will require `ping`. We'll add `iputils-ping` to the packages we must install.
-- It's better to handle the admin password as an envar/argument than having it in a file, that ends up inside the image and the project git repo. 
-- This script creates a `backuppc` user, with auto `uid` number. For Docker we need to set the `uid` of that user, to avoid permission issues between instance and host. We'll add the option to create that user before the script is run.
+- It's better to handle the admin password as an envvar/argument than having it in a file, that ends up inside the image and the project git repo. 
+- This script creates a `backuppc` user, with auto `uid` number. For Docker we need to set the `uid` of that user, to avoid permission issues between instance and host. We'll add the option to set the `uid` user number.
 
 
-See my version of [backuppc-ubuntu-installer](/assets/posts/2021-04-22-backuppc-docker-ubuntu.md/backuppc-ubuntu-installer).
+See the original version: [backuppc-ubuntu-installer.orig](/assets/posts/2021-04-22-backuppc-docker-ubuntu.md/backuppc-ubuntu-installer.orig)  
+See my version: [backuppc-ubuntu-installer](/assets/posts/2021-04-22-backuppc-docker-ubuntu.md/backuppc-ubuntu-installer)  
 
 
 ## Devel
 
 
 We'll start with the base Docker image, and run and debug the installation script until ok.  
-Let's start with this dockerfile:
+Let's start with this Dockerfile:
 
 ``` 
 FROM ubuntu:20.04
@@ -135,8 +136,8 @@ EXPOSE 80
 
 Remove previous instance or image:
 ``` bash
-docker rm  bpc
-docker rmi bpc
+docker rm  -f bpc
+docker rmi -f bpc
 
 ``` 
 
@@ -200,19 +201,11 @@ The container has two *bind mounts*, folders inside the instance that are actual
 - `/var/lib/backuppc = {host}/v/var/lib/backuppc`  
   We want to keep the backed up data outside, and obviously to keep it between runs.
 
-Notice the folder `v` has been auto generated, by just defining it in Dockerfile.
+Notice the folder `./v` has been auto generated, by just defining it in Dockerfile.
 
 Content in these folders is generated and owned by the `backuppc` user.  
 In order to avoid permission issues, that user must have the same `uid` that the user that is running the host.  
-So we'll create the user in the `Dockerfile`, and pass to it the `uid` of the current user.
-
-
-``` 
-#...
-ARG BPC_UID
-RUN adduser --system --uid=$BPC_UID --home /var/lib/backuppc --group --disabled-password --shell /bin/false backuppc
-#...
-``` 
+So we'll pass the `uid` of the host user to the instance script as an envvar, $BPC_UID.
 
 
 ## Populate Bind mounts
@@ -314,8 +307,6 @@ FROM ubuntu:20.04
 ARG BPC_UID
 ARG BPC_PASS
 
-RUN adduser --system --uid=$BPC_UID --home /var/lib/backuppc --group --disabled-password --shell /bin/false backuppc
-
 RUN echo "#!/bin/sh\nexit 0" > /usr/sbin/policy-rc.d
 COPY backuppc-ubuntu-installer  /root/
 RUN sh /root/backuppc-ubuntu-installer
@@ -336,7 +327,7 @@ This can be build with a `build.sh` script:
 
 NAME=bpc
 
-docker rmi $NAME  2>/dev/null
+docker rmi -f $NAME  2>/dev/null
 
 docker build                          \
   --build-arg BPC_UID="$BPC_UID"      \
@@ -363,7 +354,7 @@ This can be run with a `start.sh` script:
 
 NAME=bpc
 
-docker rm  $NAME  2>/dev/null
+docker rm  -f $NAME  2>/dev/null
 
 docker run                                      \
 --name=$NAME                                    \

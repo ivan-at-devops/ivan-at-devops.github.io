@@ -1,9 +1,9 @@
-#! /bin/sh
+#!/bin/bash
 set -e
 
-if [ "$1" = "install" ] || [ "$1" = "upgrade" ]; then
+if [[ $1 == "install" || $1 == "upgrade" ]]; then
   ACTION=$1
-elif [ "$1" = "" ]; then
+elif [[ $1 == "" ]]; then
   ACTION=install
 else
   echo "usage: $(basename $0) action [source]"
@@ -12,52 +12,45 @@ else
   exit 1
 fi
 
-if [ "$2" = "git" ] || [ "$2" = "tar" ]; then
+if [[ $2 == "git" || $2 == "tar" ]]; then
   SOURCE=$2
-elif [ "$2" = "" ]; then
+elif [[ $2 == "" ]]; then
   SOURCE=tar
 else
   echo "Unknown source $2!"
   exit 1
 fi
 
-if [ "$BPC_UID" ] && getent passwd "$BPC_UID"; then
-  echo "The uid = $BPC_UID is already in use!"
-  exit 1
-fi
-
 # Install dependencies
 apt-get -q update
-export DEBIAN_FRONTEND=noninteractive
-apt-get install -q -y apache2 apache2-utils libapache2-mod-perl2 par2 perl smbclient rsync tar gcc zlib1g zlib1g-dev rrdtool git make perl-doc libarchive-zip-perl libfile-listing-perl libxml-rss-perl libcgi-session-perl libacl1-dev wget iputils-ping
+apt-get -q -y upgrade
+apt-get install -q -y apache2 apache2-utils libapache2-mod-perl2 par2 perl smbclient rsync tar gcc zlib1g zlib1g-dev rrdtool git make perl-doc libarchive-zip-perl libfile-listing-perl libxml-rss-perl libcgi-session-perl libacl1-dev curl pwgen
+
+# Set password or read password file
+if [[ -e /root/password ]]; then
+  PASSWORD=$(cat /root/password)
+else
+  PASSWORD=$(pwgen -s -1 32)
+fi
+echo "$PASSWORD" > /root/password
+chmod 600 /root/password
 
 # Set up backuppc user and directory
-if [ "$BPC_UID" ]; then
-  adduser --system --home /var/lib/backuppc --group --disabled-password --shell /bin/false --uid="$BPC_UID" backuppc
-else
-  adduser --system --home /var/lib/backuppc --group --disabled-password --shell /bin/false                  backuppc
-fi
+adduser --system --home /var/lib/backuppc --group --disabled-password --shell /bin/false backuppc
+echo "backuppc:$PASSWORD" | sudo chpasswd backuppc
 mkdir -p /var/lib/backuppc/.ssh
 chmod 700 /var/lib/backuppc/.ssh
 echo -e "BatchMode yes\nStrictHostKeyChecking no" > /var/lib/backuppc/.ssh/config
-if [ ! -e /var/lib/backuppc/.ssh/id_rsa ]; then
+if [[ ! -e /var/lib/backuppc/.ssh/id_rsa ]]; then
   ssh-keygen -q -t rsa -b 4096 -N '' -C "BackupPC key" -f /var/lib/backuppc/.ssh/id_rsa
 fi
 chmod 600 /var/lib/backuppc/.ssh/id_rsa
 chmod 644 /var/lib/backuppc/.ssh/id_rsa.pub
 chown -R backuppc:backuppc /var/lib/backuppc/.ssh
 
-# Set default password or read password envvar
-if [ "$BPC_PASS" ]; then
-  PASSWORD="$BPC_PASS"
-else
-  PASSWORD=password
-fi
-echo "backuppc:$PASSWORD" | chpasswd backuppc
-
 # Get BackupPC release versions
 get_latest_release() {
-  wget -q -O - "https://api.github.com/repos/$1/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'                                
+  curl --silent "https://api.github.com/repos/$1/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'                                
 }
 bpcver=$(get_latest_release "backuppc/backuppc")
 bpcxsver=$(get_latest_release "backuppc/backuppc-xs")
@@ -66,7 +59,7 @@ rsyncbpcver=$(get_latest_release "backuppc/rsync-bpc")
 mkdir -p /tmp/bpc
 cd /tmp/bpc
 
-if [ $SOURCE = "tar" ]; then
+if [[ $SOURCE == "tar" ]]; then
   # Fetch and install latest stable releases
   wget https://github.com/backuppc/backuppc-xs/releases/download/$bpcxsver/BackupPC-XS-$bpcxsver.tar.gz
   wget https://github.com/backuppc/rsync-bpc/releases/download/$rsyncbpcver/rsync-bpc-$rsyncbpcver.tar.gz
@@ -86,7 +79,7 @@ if [ $SOURCE = "tar" ]; then
   cd ../BackupPC-$bpcver
 fi
 
-if [ $SOURCE = "git" ]; then
+if [[ $SOURCE == "git" ]]; then
   # Fetch and install the latest development code instead
   git clone https://github.com/backuppc/backuppc.git
   git clone https://github.com/backuppc/backuppc-xs.git
@@ -106,11 +99,11 @@ if [ $SOURCE = "git" ]; then
   cd BackupPC-${bpcver}git
 fi
 
-if [ $ACTION = "install" ]; then
+if [[ $ACTION == "install" ]]; then
   ./configure.pl --batch --cgi-dir /var/www/cgi-bin/BackupPC --data-dir /var/lib/backuppc --hostname backuppc --html-dir /var/www/html/BackupPC --html-dir-url /BackupPC --install-dir /usr/local/BackupPC
 fi
 
-if [ $ACTION = "upgrade" ]; then
+if [[ $ACTION == "upgrade" ]]; then
   ./configure.pl --batch --config-path /etc/BackupPC/config.pl
 fi
 

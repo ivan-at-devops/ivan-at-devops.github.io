@@ -2,7 +2,7 @@
 
 NAME=bpc
 
-docker rm  $NAME  2>/dev/null
+docker rm  -f $NAME  2>/dev/null
 
 docker run                                      \
 --name=$NAME                                    \

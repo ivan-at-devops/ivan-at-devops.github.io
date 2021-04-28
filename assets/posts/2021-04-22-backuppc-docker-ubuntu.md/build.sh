@@ -2,7 +2,7 @@
 
 NAME=bpc
 
-docker rmi $NAME  2>/dev/null
+docker rmi -f $NAME  2>/dev/null
 
 docker build                          \
   --build-arg BPC_UID="$BPC_UID"      \
