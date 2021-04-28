@@ -20,7 +20,7 @@ Let's explore the internet for tools that can recover the original files.
 ### Old FF Cache v1 tools
 
 FF uses cache2 format from Firefox 32 onward.  
-Previous versions used cache directory `~/.cache/mozilla/firefox/$someprofile/Cache`, and have metadata grouped into separated files like `_CACHE_001_`.  
+Previous versions used Cache directory `~/.cache/mozilla/firefox/$someprofile/Cache`, and have metadata grouped into separated files like `_CACHE_001_`.  
 You can detect that these tools work in the old cache because they expect that file.
 
 - https://github.com/libyal/dtformats/blob/main/documentation/Firefox%20cache%20file%20format.asciidoc
@@ -51,7 +51,7 @@ Surprisingly, I can found only one tool, and the links it refers are now almost 
 
 [JamesHabben / FirefoxCache2](https://github.com/JamesHabben/FirefoxCache2)
 
-Python scripts for parsing the index file and individual cache files from the cache2 folder of Firefox version 32 and newer.
+*Python scripts for parsing the index file and individual cache files from the cache2 folder of Firefox version 32 and newer.*
 
 ``` bash
 # Parse Firefox cache2 files in a directory or individually.
@@ -62,7 +62,7 @@ firefox-cache2-index-parser.py [-h] [-o OUTPUT] file
 
 ``` 
 
-Also was very helpful the explanation from this tool:
+It was also very helpful the explanation from this tool:
 
 [Converting the new Firefox cache2 files to an SQLite DB for investigating](https://sqliteforensictoolkit.com/converting-the-new-firefox-cache2-files-to-an-sqlite-db-for-investigating/)
 
