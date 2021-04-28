@@ -1,0 +1,15 @@
+version: "3"
+
+services:
+  backuppc:
+    build:
+      context: .
+      args:
+        - BPC_UID=${BPC_UID}
+        - BPC_PASS=${BPC_PASS}
+    ports:
+      - "8080:80"
+    volumes:
+      - "./v/etc/BackupPC:/etc/BackupPC:rw"
+      - "./v/var/lib/backuppc:/var/lib/backuppc:rw"
+

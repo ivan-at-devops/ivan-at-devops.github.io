@@ -1,0 +1,139 @@
+#! /bin/sh
+set -e
+
+if [ "$1" = "install" ] || [ "$1" = "upgrade" ]; then
+  ACTION=$1
+elif [ "$1" = "" ]; then
+  ACTION=install
+else
+  echo "usage: $(basename $0) action [source]"
+  echo "action is either install (default) or upgrade"
+  echo "source is either tar (default) or git"
+  exit 1
+fi
+
+if [ "$2" = "git" ] || [ "$2" = "tar" ]; then
+  SOURCE=$2
+elif [ "$2" = "" ]; then
+  SOURCE=tar
+else
+  echo "Unknown source $2!"
+  exit 1
+fi
+
+# Install dependencies
+apt-get -q update
+export DEBIAN_FRONTEND=noninteractive
+apt-get install -q -y apache2 apache2-utils libapache2-mod-perl2 par2 perl smbclient rsync tar gcc zlib1g zlib1g-dev rrdtool git make perl-doc libarchive-zip-perl libfile-listing-perl libxml-rss-perl libcgi-session-perl libacl1-dev wget iputils-ping
+
+# Set up backuppc user and directory, if it doen't exists yet
+if ! id backuppc >/dev/null 2>&1; then
+  adduser --system --home /var/lib/backuppc --group --disabled-password --shell /bin/false backuppc
+  mkdir -p /var/lib/backuppc/.ssh
+  chmod 700 /var/lib/backuppc/.ssh
+  echo -e "BatchMode yes\nStrictHostKeyChecking no" > /var/lib/backuppc/.ssh/config
+  if [ ! -e /var/lib/backuppc/.ssh/id_rsa ]; then
+    ssh-keygen -q -t rsa -b 4096 -N '' -C "BackupPC key" -f /var/lib/backuppc/.ssh/id_rsa
+  fi
+  chmod 600 /var/lib/backuppc/.ssh/id_rsa
+  chmod 644 /var/lib/backuppc/.ssh/id_rsa.pub
+  chown -R backuppc:backuppc /var/lib/backuppc/.ssh
+fi
+
+# Set password or read password envar
+if [ "$BPC_PASS" ]; then
+  PASSWORD="$BPC_PASS"
+else
+  PASSWORD=password
+fi
+echo "backuppc:$PASSWORD" | chpasswd backuppc
+
+# Get BackupPC release versions
+get_latest_release() {
+  wget -q -O - "https://api.github.com/repos/$1/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'                                
+}
+bpcver=$(get_latest_release "backuppc/backuppc")
+bpcxsver=$(get_latest_release "backuppc/backuppc-xs")
+rsyncbpcver=$(get_latest_release "backuppc/rsync-bpc")
+
+mkdir -p /tmp/bpc
+cd /tmp/bpc
+
+if [ $SOURCE = "tar" ]; then
+  # Fetch and install latest stable releases
+  wget https://github.com/backuppc/backuppc-xs/releases/download/$bpcxsver/BackupPC-XS-$bpcxsver.tar.gz
+  wget https://github.com/backuppc/rsync-bpc/releases/download/$rsyncbpcver/rsync-bpc-$rsyncbpcver.tar.gz
+  wget https://github.com/backuppc/backuppc/releases/download/$bpcver/BackupPC-$bpcver.tar.gz
+  tar -zxf BackupPC-XS-$bpcxsver.tar.gz
+  tar -zxf rsync-bpc-$rsyncbpcver.tar.gz
+  tar -zxf BackupPC-$bpcver.tar.gz
+  cd BackupPC-XS-$bpcxsver
+  perl Makefile.PL
+  make
+  make test
+  make install
+  cd ../rsync-bpc-$rsyncbpcver
+  ./configure
+  make
+  make install
+  cd ../BackupPC-$bpcver
+fi
+
+if [ $SOURCE = "git" ]; then
+  # Fetch and install the latest development code instead
+  git clone https://github.com/backuppc/backuppc.git
+  git clone https://github.com/backuppc/backuppc-xs.git
+  git clone https://github.com/backuppc/rsync-bpc.git
+  cd backuppc-xs
+  perl Makefile.PL
+  make
+  make test
+  make install
+  cd ../rsync-bpc
+  ./configure
+  make
+  make install
+  cd ../backuppc
+  ./makeDist --nosyntaxCheck --releasedate "`date -u "+%d %b %Y"`" --version ${bpcver}git
+  tar -zxf dist/BackupPC-${bpcver}git.tar.gz
+  cd BackupPC-${bpcver}git
+fi
+
+if [ $ACTION = "install" ]; then
+  ./configure.pl --batch --cgi-dir /var/www/cgi-bin/BackupPC --data-dir /var/lib/backuppc --hostname backuppc --html-dir /var/www/html/BackupPC --html-dir-url /BackupPC --install-dir /usr/local/BackupPC
+fi
+
+if [ $ACTION = "upgrade" ]; then
+  ./configure.pl --batch --config-path /etc/BackupPC/config.pl
+fi
+
+# Set up web server
+# Note that changing the apache user and group (/etc/apache2/envvars) could cause other services
+# provided by apache to fail. There are alternatives if you don't want to change the apache
+# user: use SCGI or a setuid BackupPC_Admin script - see the docs.
+cp httpd/BackupPC.conf /etc/apache2/conf-available/backuppc.conf
+sed -i "/Require local/d" /etc/apache2/conf-available/backuppc.conf
+sed -i "s/export APACHE_RUN_USER=www-data/export APACHE_RUN_USER=backuppc/" /etc/apache2/envvars
+sed -i "s/export APACHE_RUN_GROUP=www-data/export APACHE_RUN_GROUP=backuppc/" /etc/apache2/envvars
+echo '<html><head><meta http-equiv="refresh" content="0; url=/BackupPC_Admin"></head></html>' > /var/www/html/index.html
+a2enconf backuppc
+a2enmod cgid
+service apache2 restart
+
+# Set up backuppc service
+cp systemd/init.d/debian-backuppc /etc/init.d/backuppc
+chmod 755 /etc/init.d/backuppc
+update-rc.d backuppc defaults
+chmod u-s /var/www/cgi-bin/BackupPC/BackupPC_Admin
+touch /etc/BackupPC/BackupPC.users
+sed -i "s/$Conf{CgiAdminUserGroup}.*/$Conf{CgiAdminUserGroup} = 'backuppc';/" /etc/BackupPC/config.pl
+sed -i "s/$Conf{CgiAdminUsers}.*/$Conf{CgiAdminUsers} = 'backuppc';/" /etc/BackupPC/config.pl
+chown -R backuppc:backuppc /etc/BackupPC
+echo $PASSWORD | htpasswd -i /etc/BackupPC/BackupPC.users backuppc
+service backuppc start
+
+# Clean up
+cd
+rm -rf /tmp/bpc
+echo "All done!"
+exit 0
