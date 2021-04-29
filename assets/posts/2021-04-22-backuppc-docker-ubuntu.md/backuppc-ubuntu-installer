@@ -21,7 +21,7 @@ else
   exit 1
 fi
 
-if [ "$BPC_UID" ] && getent passwd "$BPC_UID"; then
+if [ "$BPC_UID" ] && [ $(getent passwd "$BPC_UID" | cut -d ':' -f 1) != "backuppc" ]; then
   echo "The uid = $BPC_UID is already in use!"
   exit 1
 fi
@@ -29,13 +29,15 @@ fi
 # Install dependencies
 apt-get -q update
 export DEBIAN_FRONTEND=noninteractive
-apt-get install -q -y apache2 apache2-utils libapache2-mod-perl2 par2 perl smbclient rsync tar gcc zlib1g zlib1g-dev rrdtool git make perl-doc libarchive-zip-perl libfile-listing-perl libxml-rss-perl libcgi-session-perl libacl1-dev wget iputils-ping
+apt-get install -q -y apache2 apache2-utils libapache2-mod-perl2 par2 perl smbclient rsync tar gcc zlib1g zlib1g-dev rrdtool git make perl-doc libarchive-zip-perl libfile-listing-perl libxml-rss-perl libcgi-session-perl libacl1-dev wget iputils-ping pwgen
 
 # Set up backuppc user and directory
-if [ "$BPC_UID" ]; then
-  adduser --system --home /var/lib/backuppc --group --disabled-password --shell /bin/false --uid="$BPC_UID" backuppc
-else
-  adduser --system --home /var/lib/backuppc --group --disabled-password --shell /bin/false                  backuppc
+if ! id backuppc >/dev/null 2>&1; then
+  if [ "$BPC_UID" ]; then
+    adduser --system --home /var/lib/backuppc --group --disabled-password --shell /bin/false --uid="$BPC_UID" backuppc
+  else
+    adduser --system --home /var/lib/backuppc --group --disabled-password --shell /bin/false                  backuppc
+  fi
 fi
 mkdir -p /var/lib/backuppc/.ssh
 chmod 700 /var/lib/backuppc/.ssh
@@ -47,11 +49,16 @@ chmod 600 /var/lib/backuppc/.ssh/id_rsa
 chmod 644 /var/lib/backuppc/.ssh/id_rsa.pub
 chown -R backuppc:backuppc /var/lib/backuppc/.ssh
 
-# Set default password or read password envvar
-if [ "$BPC_PASS" ]; then
+# Set password or read password file
+if   [ "$BPC_PASS" ]; then
   PASSWORD="$BPC_PASS"
+elif [ -e /root/password ]; then
+  PASSWORD=$(cat /root/password)
+  chmod 600 /root/password
 else
-  PASSWORD=password
+  PASSWORD=$(pwgen -s -1 32)
+  echo "$PASSWORD" > /root/password
+  chmod 600 /root/password
 fi
 echo "backuppc:$PASSWORD" | chpasswd backuppc
 
